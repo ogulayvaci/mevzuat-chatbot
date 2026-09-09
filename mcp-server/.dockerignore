@@ -1,0 +1,5 @@
+source/.venv
+source/__pycache__
+source/**/*.pyc
+source/.git
+source/.DS_Store
