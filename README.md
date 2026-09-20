@@ -39,7 +39,9 @@ Frontend
 
 The backend connects directly to the MCP server using `fastmcp`.
 
-OpenAI function calling is used to decide which MCP tool should be executed. The backend executes the selected MCP tool and sends the result back to the model so it can generate the final answer.
+OpenAI function calling is used to select which MCP tool should be executed. For the initial legislation request, tool usage is required so that answers are grounded through MCP rather than being accepted directly from the model.
+
+After the first MCP call, subsequent tool selection is automatic. The model may request additional MCP tools or produce the final answer when it has enough retrieved legislation context.
 
 Multiple sequential tool calls are supported.
 
@@ -109,7 +111,9 @@ User:
    → generates the final answer using the retrieved legislation
 ```
 
-The backend also limits the number of MCP tool rounds to avoid unbounded tool-call loops.
+The backend limits the number of MCP tool rounds to avoid unbounded tool-call loops.
+
+The included upstream MCP snapshot still contains the full original MCP tool set, but this application only exposes and uses the three selected legislation tools through the backend.
 
 ## Requirements
 
@@ -239,7 +243,7 @@ Example:
 ```bash
 curl -N -X POST http://127.0.0.1:8000/api/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{"message":"6698 sayılı Kişisel Verilerin Korunması Kanununda açık rıza nedir?"}'
+  -d '{"message":"657 sayılı Devlet Memurları Kanununda disiplin cezaları nelerdir?"}'
 ```
 
 The React frontend uses the streaming endpoint.
@@ -258,18 +262,32 @@ The implementation uses `AsyncOpenAI`, so OpenAI requests do not block the FastA
 
 OpenAI function calling is used to let the model select the appropriate legislation tool.
 
-The backend then:
+For the first legislation turn, tool usage is required.
+
+This ensures that the backend performs at least one MCP tool call before accepting a final legislation answer.
+
+After the first tool round, tool selection returns to automatic mode so the model can either:
+
+- request another MCP tool
+- use the retrieved context
+- generate the final answer
+
+The backend flow is:
 
 ```text
-receives function call
-        ↓
-executes MCP tool
-        ↓
-returns tool result to OpenAI
-        ↓
-model may request another tool
-        ↓
-final answer
+User message
+     ↓
+OpenAI request with required tool use
+     ↓
+MCP function call
+     ↓
+Backend executes MCP tool
+     ↓
+Tool output returned to OpenAI
+     ↓
+Optional additional tool calls
+     ↓
+Final grounded answer
 ```
 
 A typical flow is:
@@ -297,8 +315,6 @@ OpenAI `response.output_text.delta` events are forwarded to the frontend as they
 The frontend consumes the response using the browser Fetch Streams API and progressively updates the assistant message.
 
 This means the user does not need to wait for the complete final answer before text starts appearing.
-
-If the model answers directly without using an MCP tool, the current implementation may return that response as a single chunk.
 
 Streaming errors are handled inside the response generator so that the frontend receives a user-friendly error message instead of an unexplained connection failure.
 
@@ -383,7 +399,7 @@ https://github.com/saidsurucu/mevzuat-mcp
 
 During development, the upstream repository later became unavailable through anonymous Git access.
 
-To keep the submitted Docker build self-contained and reproducible, the tested MCP source snapshot is included under:
+To keep the submitted Docker build self-contained and easy to rebuild, the tested MCP source snapshot is included under:
 
 ```text
 mcp-server/source/
@@ -401,7 +417,9 @@ Additional source provenance information is documented in:
 mcp-server/source/UPSTREAM.md
 ```
 
-The submitted Dockerfile no longer depends on cloning the upstream GitHub repository during build.
+The submitted Dockerfile does not depend on cloning the upstream GitHub repository during build.
+
+The snapshot still contains the original upstream tool set and supporting files. The submitted application intentionally uses only the three selected legislation tools listed earlier.
 
 ## MCP Docker Image
 
@@ -417,7 +435,7 @@ Build the MCP image locally:
 docker build -t mevzuat-case-mcp ./mcp-server
 ```
 
-To perform a completely uncached build:
+To perform an uncached build:
 
 ```bash
 docker build --no-cache -t mevzuat-case-mcp ./mcp-server
@@ -463,7 +481,9 @@ The custom Dockerfile does not install the Playwright Chromium browser binary.
 
 The Playwright Python package may still be installed because it is part of the upstream dependency set, but the selected case flow does not rely on Chromium or browser automation.
 
-This was validated using real MCP tool calls both locally and against the Azure deployment.
+The upstream snapshot also contains optional integrations and dependencies that are not used by this application.
+
+These were left in the snapshot to preserve the tested upstream source rather than rewriting unrelated upstream functionality.
 
 ## Docker Platform Note
 
@@ -520,44 +540,162 @@ Azure Container Apps
 Public HTTPS MCP Endpoint
 ```
 
-### Azure Container Registry
+### Azure Resources Used
 
-An Azure Container Registry was created using the Basic SKU.
+The deployment used:
 
-The Docker image was pushed to the private registry before deployment.
+```text
+Resource Group:
+rg-cs-7f31a8
 
-Example registry login:
+Region:
+westeurope
 
-```bash
-az acr login --name <registry-name>
+Azure Container Registry:
+mevzuatcaseogul
+
+Container Apps Environment:
+mevzuat-case-env
+
+Container App:
+mevzuat-case-mcp
 ```
 
-Example image tag:
+### Reproducible Azure CLI Deployment
+
+The following sequence documents the deployment flow used for the case.
+
+Set the deployment variables:
 
 ```bash
-docker tag \
-  mevzuat-case-mcp:latest \
-  <registry>.azurecr.io/mevzuat-case-mcp:latest
+RESOURCE_GROUP=rg-cs-7f31a8
+LOCATION=westeurope
+ACR_NAME=mevzuatcaseogul
+CONTAINERAPP_ENV=mevzuat-case-env
+CONTAINERAPP_NAME=mevzuat-case-mcp
+IMAGE_NAME=mevzuat-case-mcp
 ```
 
-Example push:
+Create the Azure Container Registry:
 
 ```bash
-docker push \
-  <registry>.azurecr.io/mevzuat-case-mcp:latest
+az acr create \
+  --resource-group $RESOURCE_GROUP \
+  --name $ACR_NAME \
+  --sku Basic \
+  --location $LOCATION
 ```
 
-For the final Azure deployment from Apple Silicon, the image was built and pushed as `linux/amd64` using Docker Buildx.
+Log in to the registry:
 
-### Azure Container Apps Environment
+```bash
+az acr login --name $ACR_NAME
+```
 
-An Azure Container Apps Environment was created inside the provided resource group.
+Build and push the image for Azure Container Apps:
 
-The MCP server was then deployed as an Azure Container App with:
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  -t $ACR_NAME.azurecr.io/$IMAGE_NAME:latest \
+  --push \
+  ./mcp-server
+```
 
-- external ingress enabled
-- target port `8000`
-- public HTTPS access
+Create the Container Apps environment:
+
+```bash
+az containerapp env create \
+  --name $CONTAINERAPP_ENV \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+```
+
+Managed identity with the `AcrPull` role should normally be preferred for registry access.
+
+In this case, the provided Azure account did not have permission to create the required role assignment.
+
+For that reason, registry credentials were used as a deployment fallback.
+
+Enable ACR admin credentials:
+
+```bash
+az acr update \
+  --name $ACR_NAME \
+  --admin-enabled true
+```
+
+Read the registry credentials into shell variables:
+
+```bash
+ACR_USERNAME=$(az acr credential show \
+  --name $ACR_NAME \
+  --query username \
+  --output tsv)
+
+ACR_PASSWORD=$(az acr credential show \
+  --name $ACR_NAME \
+  --query passwords[0].value \
+  --output tsv)
+```
+
+Create the Container App:
+
+```bash
+az containerapp create \
+  --name $CONTAINERAPP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --environment $CONTAINERAPP_ENV \
+  --image $ACR_NAME.azurecr.io/$IMAGE_NAME:latest \
+  --registry-server $ACR_NAME.azurecr.io \
+  --registry-username $ACR_USERNAME \
+  --registry-password $ACR_PASSWORD \
+  --ingress external \
+  --target-port 8000
+```
+
+If the Container App already exists and only the image needs to be updated:
+
+```bash
+az containerapp update \
+  --name $CONTAINERAPP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --image $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
+```
+
+Get the public hostname:
+
+```bash
+az containerapp show \
+  --name $CONTAINERAPP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query properties.configuration.ingress.fqdn \
+  --output tsv
+```
+
+Verify the deployment:
+
+```bash
+curl https://<container-app-fqdn>/health
+```
+
+Expected example:
+
+```json
+{
+  "status": "healthy",
+  "service": "Mevzuat MCP Server",
+  "version": "0.1.0"
+}
+```
+
+The MCP endpoint is:
+
+```text
+https://<container-app-fqdn>/mcp
+```
+
+A real FastMCP client call should also be used to confirm that the deployed service can establish an MCP session and execute the selected legislation tools.
 
 ## Registry Authentication
 
@@ -637,6 +775,8 @@ The repository ignores sensitive and local files including:
 node_modules/
 __pycache__/
 *.pyc
+dist/
+.DS_Store
 ```
 
 The following template is intentionally included:
@@ -647,7 +787,9 @@ backend/.env.example
 
 It contains configuration names but no API key.
 
-Before submission, the Git repository was also checked to ensure that the real `.env` file was not tracked.
+The real `.env` file must never be committed or included in a manual ZIP submission.
+
+The preferred submission method is a Git repository containing only tracked project files.
 
 ## Validation and Error Handling
 
@@ -669,9 +811,9 @@ Internal service errors are logged on the backend while user-facing responses re
 
 ## Verification
 
-The final project was tested from a clean Git clone.
+The project was tested from a clean Git state.
 
-The following checks succeeded:
+The following checks succeeded.
 
 ### Frontend
 
@@ -683,7 +825,7 @@ npm run lint
 
 ### Backend
 
-A fresh Python 3.12 virtual environment was created and:
+Using Python 3.12:
 
 ```bash
 pip install -r requirements.txt
@@ -691,14 +833,14 @@ python -m compileall app
 pip check
 ```
 
-completed successfully.
-
 ### Docker
 
-A clean Docker build was verified with:
+The MCP image was successfully built and run locally:
 
 ```bash
-docker build --no-cache -t mevzuat-case-mcp-clean ./mcp-server
+docker build --no-cache \
+  -t mevzuat-case-mcp-clean \
+  ./mcp-server
 ```
 
 The resulting container:
@@ -709,6 +851,39 @@ The resulting container:
 - listed MCP tools
 - successfully executed real legislation tool calls
 
+### Azure
+
+The cloud deployment was validated using:
+
+- `/health`
+- FastMCP session establishment
+- tool listing
+- real tool execution
+
+### Backend Integration
+
+The following were also verified:
+
+- backend `/health`
+- normal `/api/chat`
+- `/api/chat/stream`
+- input validation
+- incremental streaming
+- MCP-backed legislation answers
+
+### Frontend Integration
+
+The React UI was tested with multiple legislation questions from different laws.
+
+The following were verified:
+
+- streamed answers
+- Markdown rendering
+- multiple sequential questions
+- dynamic health indicator
+- backend outage detection
+- recovery behavior
+
 ## Scope
 
 The implementation intentionally focuses on the core requirements of the case:
@@ -717,10 +892,12 @@ The implementation intentionally focuses on the core requirements of the case:
 - cloud MCP deployment
 - backend access to the MCP server
 - OpenAI integration
-- MCP tool usage
+- enforced MCP usage for legislation answers
+- MCP tool execution
 - React chat interface
 - streamed responses
 - clear local setup instructions
+- documented Azure deployment steps
 
 The following were intentionally kept out of scope because they were not required by the case:
 
@@ -731,7 +908,9 @@ The following were intentionally kept out of scope because they were not require
 - queues
 - Kubernetes
 - CI/CD infrastructure
-- additional AI providers
+- additional AI providers in the submitted application
 - support for every upstream MCP feature
+
+The upstream source snapshot may still contain optional integrations from the original project, but they are neither configured nor used by this application.
 
 The goal was to keep the implementation focused, understandable, and easy to run while satisfying the requested case functionality.

@@ -148,6 +148,7 @@ async def get_chat_response(message: str) -> str:
         instructions=SYSTEM_PROMPT,
         input=message,
         tools=TOOLS,
+        tool_choice="required",
     )
 
     tool_rounds = 0
@@ -194,6 +195,7 @@ async def stream_chat_response(message: str):
         instructions=SYSTEM_PROMPT,
         input=message,
         tools=TOOLS,
+        tool_choice="required",
     )
 
     for _ in range(MAX_TOOL_ROUNDS):
