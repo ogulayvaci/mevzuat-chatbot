@@ -11,6 +11,95 @@ The application uses:
 - FastMCP for MCP communication
 - Azure Container Apps for the deployed MCP server
 
+## Quick Start
+
+The shortest way to run the application locally is to use the already deployed MCP server and start only the backend and frontend.
+
+### 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd mevzuat-chatbot
+```
+
+### 2. Start the backend
+
+```bash
+cd backend
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Open `backend/.env` and add your OpenAI API key:
+
+```env
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.4-mini
+MCP_SERVER_URL=https://mevzuat-case-mcp.happycoast-5b0771d5.westeurope.azurecontainerapps.io/mcp
+```
+
+Then start the FastAPI backend:
+
+```bash
+python -m uvicorn app.main:app --reload
+```
+
+Verify that the backend and MCP server are reachable:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{
+  "status": "healthy",
+  "mcp": "online"
+}
+```
+
+### 3. Start the frontend
+
+Open a second terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+The chatbot is now ready to use.
+
+### Optional: Run the MCP server locally
+
+The application does not require a local MCP server for the normal Quick Start flow because the deployed Azure MCP endpoint is already configured.
+
+To build and run the MCP server locally:
+
+```bash
+docker build -t mevzuat-case-mcp ./mcp-server
+docker run --rm -p 8001:8000 mevzuat-case-mcp
+```
+
+Then change the backend `.env` value to:
+
+```env
+MCP_SERVER_URL=http://127.0.0.1:8001/mcp
+```
+
+Restart the backend after changing the environment variable.
+
+---
+
 ## Architecture
 
 The application flow is:
@@ -561,7 +650,7 @@ Container App:
 mevzuat-case-mcp
 ```
 
-### Reproducible Azure CLI Deployment
+### Azure CLI Deployment
 
 The following sequence documents the deployment flow used for the case.
 
