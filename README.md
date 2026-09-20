@@ -24,12 +24,59 @@ cd mevzuat-chatbot
 
 ### 2. Start the backend
 
+Go to the backend directory:
+
 ```bash
 cd backend
+```
+
+Create a Python 3.12 virtual environment.
+
+#### macOS / Linux
+
+```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
+```
+
+#### Windows PowerShell
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+#### Windows Command Prompt
+
+```cmd
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
+```
+
+Install the backend dependencies:
+
+```bash
 pip install -r requirements.txt
+```
+
+Create the local environment file:
+
+#### macOS / Linux
+
+```bash
 cp .env.example .env
+```
+
+#### Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+```
+
+#### Windows Command Prompt
+
+```cmd
+copy .env.example .env
 ```
 
 Open `backend/.env` and add your OpenAI API key:
@@ -44,6 +91,12 @@ Then start the FastAPI backend:
 
 ```bash
 python -m uvicorn app.main:app --reload
+```
+
+The backend runs at:
+
+```text
+http://127.0.0.1:8000
 ```
 
 Verify that the backend and MCP server are reachable:
@@ -63,7 +116,9 @@ Expected response:
 
 ### 3. Start the frontend
 
-Open a second terminal:
+Open a second terminal.
+
+From the project root:
 
 ```bash
 cd frontend
@@ -81,9 +136,11 @@ The chatbot is now ready to use.
 
 ### Optional: Run the MCP server locally
 
-The application does not require a local MCP server for the normal Quick Start flow because the deployed Azure MCP endpoint is already configured.
+The normal Quick Start flow uses the already deployed Azure MCP endpoint.
 
-To build and run the MCP server locally:
+To build and run the MCP server locally, Docker Desktop must be installed and running.
+
+From the project root:
 
 ```bash
 docker build -t mevzuat-case-mcp ./mcp-server
@@ -97,6 +154,8 @@ MCP_SERVER_URL=http://127.0.0.1:8001/mcp
 ```
 
 Restart the backend after changing the environment variable.
+
+The project can be run on both macOS and Windows. Only some shell commands, such as Python virtual environment activation and environment-variable syntax, differ between operating systems.
 
 ---
 
@@ -213,6 +272,8 @@ Before running the project locally, make sure the following are installed:
 - npm
 - Docker Desktop, if building or running the MCP server locally
 
+The application can be run on both macOS and Windows.
+
 ## Backend Setup
 
 Go to the backend directory:
@@ -221,16 +282,27 @@ Go to the backend directory:
 cd backend
 ```
 
-Create a virtual environment:
+Create a virtual environment.
+
+### macOS / Linux
 
 ```bash
 python3.12 -m venv .venv
+source .venv/bin/activate
 ```
 
-Activate it on macOS or Linux:
+### Windows PowerShell
 
-```bash
-source .venv/bin/activate
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+### Windows Command Prompt
+
+```cmd
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
 ```
 
 Install dependencies:
@@ -239,10 +311,24 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Create a `.env` file using the provided template:
+Create a `.env` file using the provided template.
+
+### macOS / Linux
 
 ```bash
 cp .env.example .env
+```
+
+### Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+```
+
+### Windows Command Prompt
+
+```cmd
+copy .env.example .env
 ```
 
 Configure the environment variables:
@@ -650,9 +736,23 @@ Container App:
 mevzuat-case-mcp
 ```
 
-### Azure CLI Deployment
+### Azure CLI Prerequisites
 
-The following sequence documents the deployment flow used for the case.
+Before running the deployment commands on a new machine or Azure account:
+
+```bash
+az login
+az account set --subscription <subscription-id>
+az extension add --name containerapp --upgrade
+az provider register --namespace Microsoft.App
+az provider register --namespace Microsoft.OperationalInsights
+```
+
+The deployment commands below use Bash/Zsh-style variables, as used during the original deployment.
+
+Windows users can run the same Azure CLI commands from Git Bash, WSL, or translate the variable declarations to PowerShell syntax.
+
+### Azure CLI Deployment
 
 Set the deployment variables:
 
@@ -783,6 +883,8 @@ The MCP endpoint is:
 ```text
 https://<container-app-fqdn>/mcp
 ```
+
+`/mcp` is the MCP protocol endpoint and is intended for MCP clients. A plain browser or `GET` request may return an error. Use `/health` for a simple browser or curl availability check.
 
 A real FastMCP client call should also be used to confirm that the deployed service can establish an MCP session and execute the selected legislation tools.
 
@@ -994,12 +1096,15 @@ The following were intentionally kept out of scope because they were not require
 - user accounts
 - databases
 - persistent conversation history
+- cross-request conversation context
 - queues
 - Kubernetes
 - CI/CD infrastructure
 - additional AI providers in the submitted application
 - support for every upstream MCP feature
 
+Each chat request is independent. Conversation context from previous messages is displayed in the frontend but is not sent back to the model. Follow-up questions should therefore restate the relevant legislation when necessary.
+
 The upstream source snapshot may still contain optional integrations from the original project, but they are neither configured nor used by this application.
 
-The goal was to keep the implementation focused, understandable, and easy to run while satisfying the requested case functionality.
+The goal was to keep the implementation focused, understandable, cross-platform, and easy to run while satisfying the requested case functionality.
