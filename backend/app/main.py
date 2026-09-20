@@ -86,8 +86,13 @@ async def chat(request: ChatRequest):
     except HTTPException:
         raise
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Chat request failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Yanıt oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.",
+        )
 
 
 @app.post("/api/chat/stream")

@@ -150,7 +150,9 @@ async def get_chat_response(message: str) -> str:
         tools=TOOLS,
     )
 
-    for _ in range(MAX_TOOL_ROUNDS):
+    tool_rounds = 0
+
+    while True:
         tool_calls = [
             item
             for item in response.output
@@ -168,7 +170,14 @@ async def get_chat_response(message: str) -> str:
 
             return answer
 
+        if tool_rounds >= MAX_TOOL_ROUNDS:
+            return (
+                "İlgili mevzuat bilgisine ulaşmak için çok fazla araç çağrısı gerekti. "
+                "Lütfen sorunuzu biraz daha spesifik şekilde yeniden sorun."
+            )
+
         tool_outputs = await execute_tool_calls(response)
+        tool_rounds += 1
 
         response = await client.responses.create(
             model=OPENAI_MODEL,
@@ -177,11 +186,6 @@ async def get_chat_response(message: str) -> str:
             input=tool_outputs,
             tools=TOOLS,
         )
-
-    return (
-        "İlgili mevzuat bilgisine ulaşmak için çok fazla araç çağrısı gerekti. "
-        "Lütfen sorunuzu biraz daha spesifik şekilde yeniden sorun."
-    )
 
 
 async def stream_chat_response(message: str):
